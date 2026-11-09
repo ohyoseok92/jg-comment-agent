@@ -97,6 +97,8 @@ def validate(text: str, cfg: dict, previous=()) -> list:
         errs.append("해시태그는 넣을 수 없습니다.")
     if FAKE_REVIEW_RE.search(text):
         errs.append("운명원을 직접 이용해 본 것 같은 후기 표현은 쓸 수 없습니다.")
+    if re.search(r"(문의|연락)(해\s*|\s*)주세요", text):
+        errs.append("시청자에게 문의나 연락을 요청하지 마세요.")
     if re.search(r"운명원\s*님", text):
         errs.append("운명원은 사람 이름이 아니라 서비스 이름입니다.")
     if re.search(r"운명원.{0,20}(알려주|설명하|분석하|영상|이론|해결|보장)", text):

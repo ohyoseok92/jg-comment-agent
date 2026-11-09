@@ -6,6 +6,7 @@
 주의: 유튜브 DOM 셀렉터는 수시로 바뀔 수 있으니, 실패하면 캡처를 보고 SEL을 고친다.
 """
 import argparse
+import os
 import random
 import re
 from datetime import datetime
@@ -17,6 +18,7 @@ import db
 
 ROOT = Path(__file__).parent
 SHOT_DIR = ROOT / "data" / "screenshots"
+VIDEO_DIR = ROOT / "data" / "demo_clips"
 
 SEL = {
     "watch": "ytd-watch-flexy",
@@ -46,6 +48,13 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
 
     with sync_playwright() as p:
         try:
+            recording = os.getenv("RECORD_POST_VIDEO") == "1"
+            video_options = {}
+            if recording:
+                clip_dir = VIDEO_DIR / f"job{job_id}"
+                clip_dir.mkdir(parents=True, exist_ok=True)
+                video_options = {"record_video_dir": str(clip_dir),
+                                 "record_video_size": {"width": 1600, "height": 900}}
             ctx = p.chromium.launch_persistent_context(
                 user_data_dir,
                 channel="chrome",  # 설치된 크롬 사용
@@ -53,6 +62,7 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
                 locale="ko-KR",
                 viewport=None,
                 args=["--start-maximized", "--lang=ko-KR"],
+                **video_options,
             )
         except Exception as e:
             db.update_status(job_id, "failed", f"크롬 프로필을 열지 못했습니다(같은 프로필 창이 열려 있으면 닫아 주세요): {e}")

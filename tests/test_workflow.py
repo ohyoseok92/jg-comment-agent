@@ -127,6 +127,12 @@ def test_matchmaking_word_is_not_mistaken_for_fake_review():
     assert drafter.validate(text, cfg) == []
 
 
+def test_rejects_direct_contact_request():
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    text = "[광고] 헤어진 뒤 연락을 기다리는 마음이 복잡하죠. 운명원 연애 사주가 궁금하면 언제든지 문의해주세요."
+    assert any("문의나 연락" in error for error in drafter.validate(text, cfg))
+
+
 @pytest.mark.parametrize("url", [
     "https://www.youtube.com/watch?v=abcdefghijk",
     "https://youtu.be/abcdefghijk",
