@@ -28,7 +28,7 @@ YouTube Data API v3는 Google Cloud 프로젝트에서 활성화하고 API 키�
 Chrome에서 직접 Google 계정에 로그인하고 YouTube 화면을 확인한 다음 창을 완전히 닫습니다. 다른 계정을 쓰려면 `유튜브2`, `유튜브3`도 같은 방식으로 준비합니다. 같은 프로필의 Chrome 창이 열려 있으면 Playwright가 게시 작업을 시작할 수 없습니다.
 
 ```powershell
-.\.venv\Scripts\python.exe -m streamlit run app.py
+.\.venv\Scripts\python.exe -m streamlit run app.py --server.address 127.0.0.1
 ```
 
 대시보드 주소는 기본적으로 `http://localhost:8501`입니다. 시연은 본인 채널의 테스트 영상에서 진행하고, 실제 게시 전에 초안과 광고 표시를 직접 확인하세요.
