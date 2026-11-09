@@ -13,12 +13,18 @@ def _require(key):
 
 
 def _get(path: str, params: dict) -> dict:
-    r = requests.get(f"{API}/{path}", params=params, timeout=15)
+    try:
+        r = requests.get(f"{API}/{path}", params=params, timeout=15)
+    except requests.RequestException:
+        # requests 예외에는 key가 포함된 요청 URL이 들어갈 수 있다.
+        raise RuntimeError("YouTube API에 연결하지 못했습니다. 네트워크를 확인하세요.") from None
     if r.status_code != 200:
         try:
             msg = r.json()["error"]["message"]
         except Exception:
             msg = r.text[:200]
+        if params.get("key"):
+            msg = msg.replace(params["key"], "[API KEY]")
         raise RuntimeError(f"YouTube API {r.status_code}: {msg}")
     return r.json()
 

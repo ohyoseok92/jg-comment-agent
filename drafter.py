@@ -160,12 +160,15 @@ def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
             [{"role": "user", "content": analysis_prompt + ("\n직전 답변은 자료에 없는 표현이었습니다. detail은 원문에서 정확히 복사하세요." if attempt else "")}],
             400,
         )
-        analysis = _parse_json(raw_analysis)
+        try:
+            analysis = _parse_json(raw_analysis)
+        except (ValueError, AttributeError):
+            continue
         concern = str(analysis.get("concern", "")).strip()[:35]
         detail = str(analysis.get("detail", "")).strip()
         if detail in evidence and len(detail) > 20:
             detail = detail[:20].rsplit(" ", 1)[0].rstrip(".,!? ") or detail[:20]
-        if concern and detail and detail in evidence:
+        if concern and detail and detail in evidence and "#" not in detail and not URL_RE.search(detail):
             break
     else:
         detail = video["title"].split("#", 1)[0].strip()[:20].rstrip(".,!? ")

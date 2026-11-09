@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import requests
 
 import db
 import drafter
@@ -35,6 +36,25 @@ def test_failed_before_submission_can_retry(isolated_db):
     assert db.reserve("abcdefghijk", "영상", "유튜브1", "[광고] 댓글", 1) > first
 
 
+def test_unverified_survives_new_session_and_can_be_resolved(isolated_db):
+    first = db.reserve("abcdefghijk", "영상", "유튜브1", "[광고] 댓글", 10)
+    db.update_status(first, "unverified")
+    assert [job["id"] for job in db.list_unverified()] == [first]
+    db.resolve_unverified(first, posted=False)
+    assert db.list_unverified() == []
+    assert db.reserve("abcdefghijk", "영상", "유튜브1", "[광고] 댓글", 10) > first
+
+
+def test_network_error_never_exposes_youtube_api_key(monkeypatch):
+    key = "sensitive-test-key"
+    def fail(*args, **kwargs):
+        raise requests.ConnectionError(f"url=/youtube/v3/search?key={key}")
+    monkeypatch.setattr(requests, "get", fail)
+    with pytest.raises(RuntimeError) as exc:
+        yt.search_latest(key, "연애", 1)
+    assert key not in str(exc.value)
+
+
 def test_rising_filter_uses_age_and_views(monkeypatch):
     now = datetime.now(timezone.utc)
     videos = [
@@ -66,6 +86,24 @@ def test_draft_checks_source_and_disclosure(monkeypatch):
     assert draft["detail"] == "이별 뒤 연락"
     assert draft["comment"].startswith("[광고] ")
     assert drafter.validate(draft["comment"], cfg) == []
+
+
+def test_draft_retries_invalid_analysis_json(monkeypatch):
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    video = {"id": "abcdefghijk", "title": "이별 뒤 연락을 기다려야 할까", "channel": "테스트", "description": "이별 뒤 연락", "thumbnail": ""}
+    replies = iter([
+        "not-json",
+        '{"concern":"이별 뒤 연락을 기다릴지","detail":"이별 뒤 연락"}',
+        '{"body":"이별 뒤 연락을 기다리는 마음이 참 어렵죠. 운명원에서 연애 사주를 살펴보는 방법도 있습니다."}',
+    ])
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(drafter, "local_model_status", lambda *_: (True, "ready"))
+    monkeypatch.setattr(drafter, "_chat", lambda *_: next(replies))
+    monkeypatch.setattr(yt, "get_transcript", lambda *_, **__: "")
+    monkeypatch.setattr(yt, "get_top_comments", lambda *_, **__: [])
+    draft = drafter.make_draft(video, cfg)
+    assert draft["errors"] == []
+    assert draft["detail"] == "이별 뒤 연락"
 
 
 def test_rejects_brand_as_video_author():

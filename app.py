@@ -14,6 +14,7 @@ import drafter
 import youtube_api as yt
 
 ROOT = Path(__file__).parent
+LOG_DIR = ROOT / "data" / "logs"
 load_dotenv(ROOT / ".env")
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
 YT_KEY = os.getenv("YOUTUBE_API_KEY")
@@ -49,7 +50,7 @@ def cached_rising(key: str, keyword: str, low: int, high: int, per_hour: int, ho
 
 
 ss = st.session_state
-for k, v in {"videos": [], "selected": None, "drafts": {}, "job_id": None, "ver": 0, "errs": ["초안 없음"], "text": ""}.items():
+for k, v in {"videos": [], "selected": None, "drafts": {}, "processes": {}, "job_id": None, "ver": 0, "errs": ["초안 없음"], "text": ""}.items():
     ss.setdefault(k, v)
 
 
@@ -72,6 +73,13 @@ def status_panel():
     job = db.get_job(jid)
     if not job:
         return
+    proc = ss.processes.get(jid)
+    if proc and proc.poll() is not None:
+        ss.processes.pop(jid, None)
+        if job["status"] in ("queued", "opening", "typing", "submitting"):
+            state = "unverified" if job["status"] == "submitting" else "failed"
+            db.update_status(jid, state, f"게시 프로세스가 종료됐습니다(종료 코드 {proc.returncode}). data/logs/job{jid}.log를 확인하세요.")
+            job = db.get_job(jid)
     order = ["queued", "opening", "typing", "submitting", "posted"]
     labels = {"queued": "대기", "opening": "프로필 여는 중", "typing": "입력 중", "submitting": "게시 확인 중", "posted": "게시 완료"}
     s = job["status"]
@@ -84,20 +92,14 @@ def status_panel():
             st.caption(job["detail"])
     if s == "posted":
         st.success("게시 완료 · 내 댓글이 확인됐습니다.")
-        st.link_button("댓글 보기", job.get("comment_url") or watch_url(job["video_id"]), use_container_width=True)
+        st.link_button("댓글 보기", job.get("comment_url") or watch_url(job["video_id"]), width="stretch")
     elif s in ("failed", "unverified"):
         st.error(f"{db.STATUS_KO[s]}: {job.get('detail') or ''}")
         if job.get("screenshot") and Path(job["screenshot"]).exists():
             st.image(job["screenshot"], caption="실패 시점 화면")
         if s == "unverified":
             st.link_button("영상에서 직접 확인", watch_url(job["video_id"]))
-            yes, no = st.columns(2)
-            if yes.button("댓글 확인됨", key=f"confirm_{jid}"):
-                db.resolve_unverified(jid, True)
-                st.rerun()
-            if no.button("댓글 없음 확인", key=f"not_posted_{jid}"):
-                db.resolve_unverified(jid, False)
-                st.rerun()
+            st.caption("확인 후 화면 아래 '수동 확인이 필요한 게시'에서 결과를 기록하세요.")
     # 작업이 끝나면 한 번 전체 새로고침 (목록·카운트 갱신)
     if s in ("posted", "failed", "unverified") and not ss.get(f"done_{jid}"):
         ss[f"done_{jid}"] = True
@@ -122,13 +124,15 @@ c1, c2, c3 = st.columns([1.15, 1.25, 1])
 with c1:
     st.subheader("① 영상 불러오기")
     b1, b2 = st.columns(2)
-    if b1.button("영상 불러오기", type="primary", use_container_width=True):
+    if b1.button("영상 불러오기", type="primary", width="stretch"):
         with st.spinner("최신 영상을 불러오는 중..."):
             try:
                 ss.videos = cached_latest(YT_KEY, CFG["search"]["keyword"], CFG["search"]["max_results"])
             except Exception as e:
                 st.error(f"불러오기 실패: {e}")
-    if b2.button("🔥 뜨기 직전 영상", use_container_width=True, help="조회수 1,000~5,000 · 시간당 150회 이상 (초안까지만)"):
+    rising_help = (f"조회수 {CFG['rising']['min_views']:,}~{CFG['rising']['max_views']:,}"
+                   f" · 시간당 {CFG['rising']['min_views_per_hour']:,}회 이상 (초안까지만)")
+    if b2.button("🔥 뜨기 직전 영상", width="stretch", help=rising_help):
         r = CFG["rising"]
         with st.spinner("뜨기 직전 영상을 찾는 중..."):
             try:
@@ -147,7 +151,7 @@ with c1:
             with st.container(border=True):
                 ic, tc = st.columns([1, 1.7])
                 if v["thumbnail"]:
-                    ic.image(v["thumbnail"], use_container_width=True)
+                    ic.image(v["thumbnail"], width="stretch")
                 tc.markdown(f"**{v['title']}**")
                 tc.caption(f"{v['channel']} · {fmt_date(v['published_at'])} · 조회 {v['view_count']:,}")
                 if v.get("rising"):
@@ -182,7 +186,7 @@ with c2:
         ss.errs, ss.text = ["영상 미선택"], ""
     else:
         if v["thumbnail"]:
-            st.image(v["thumbnail"], use_container_width=True)
+            st.image(v["thumbnail"], width="stretch")
         st.markdown(f"**{v['title']}**")
         st.caption(f"{v['channel']} · {fmt_date(v['published_at'])}")
         st.link_button("유튜브에서 보기", watch_url(v["id"]))
@@ -196,10 +200,13 @@ with c2:
                     d["ver"] = ss.ver
                     ss.drafts[v["id"]] = d
                 except Exception as e:
-                    st.error(f"초안 생성 실패: {e}")
+                    ss.drafts[v["id"]] = {"failed": str(e)}
 
         d = ss.drafts.get(v["id"])
-        if d:
+        if d and "failed" in d:
+            st.error(f"초안 생성 실패: {d['failed']}")
+            ss.errs, ss.text = ["초안 생성 실패"], ""
+        elif d:
             st.markdown("**영상 속 고민 한 줄**")
             st.success(d["concern"] or "(정리 실패)")
             st.caption(f"짚은 장면/말: {d['detail']}  ·  참고 자료: {d['source']}")
@@ -240,18 +247,24 @@ with c3:
     elif running:
         reason = "진행 중인 작업이 끝난 뒤 다시 눌러 주세요."
 
-    if st.button("댓글 달기", type="primary", use_container_width=True, disabled=bool(reason)):
+    if st.button("댓글 달기", type="primary", width="stretch", disabled=bool(reason)):
         try:
+            current_errors = drafter.validate(ss.text, CFG, db.previous_texts())
+            if current_errors:
+                raise db.RuleViolation("게시 직전 검증 실패: " + "; ".join(current_errors))
             jid = db.reserve(v["id"], v["title"], profile, ss.text, limit)
             pdir = next(p["user_data_dir"] for p in CFG["profiles"] if p["name"] == profile)
             t = CFG["typing"]
-            subprocess.Popen(
-                [sys.executable, str(ROOT / "poster.py"), "--job-id", str(jid),
-                 "--user-data-dir", str((ROOT / pdir).resolve()),
-                 "--min-delay", str(t["min_delay_ms"]), "--max-delay", str(t["max_delay_ms"]),
-                 "--hold", str(t["hold_seconds"])],
-                cwd=str(ROOT),
-            )
+            LOG_DIR.mkdir(parents=True, exist_ok=True)
+            with (LOG_DIR / f"job{jid}.log").open("ab") as log:
+                proc = subprocess.Popen(
+                    [sys.executable, str(ROOT / "poster.py"), "--job-id", str(jid),
+                     "--user-data-dir", str((ROOT / pdir).resolve()),
+                     "--min-delay", str(t["min_delay_ms"]), "--max-delay", str(t["max_delay_ms"]),
+                     "--hold", str(t["hold_seconds"])],
+                    cwd=str(ROOT), stdout=log, stderr=subprocess.STDOUT,
+                )
+            ss.processes[jid] = proc
             ss.job_id = jid
         except db.RuleViolation as e:
             st.error(str(e))
@@ -266,6 +279,23 @@ with c3:
 # 기록 ----------------------------------------------------------------------
 st.divider()
 st.subheader("기록")
+pending = db.list_unverified()
+if pending:
+    st.warning(f"수동 확인이 필요한 게시 {len(pending)}건이 있습니다. 영상의 실제 댓글을 확인한 뒤 결과를 기록하세요.")
+    for job in pending:
+        with st.container(border=True):
+            st.write(f"**{job['video_title'] or job['video_id']}** · {job['profile']} · {job['created_at'].replace('T', ' ')}")
+            st.caption(job["text"] or "")
+            link, yes, no = st.columns([1, 1, 1])
+            link.link_button("영상에서 확인", watch_url(job["video_id"]), width="stretch")
+            for button, posted, label in ((yes, True, "댓글 확인됨"), (no, False, "댓글 없음 확인")):
+                if button.button(label, key=f"resolve_{job['id']}_{posted}", width="stretch"):
+                    try:
+                        db.resolve_unverified(job["id"], posted)
+                    except db.RuleViolation as e:
+                        st.error(str(e))
+                    else:
+                        st.rerun()
 rows = db.list_log()
 if rows:
     st.dataframe(
@@ -280,7 +310,7 @@ if rows:
             }
             for r in rows
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 else:

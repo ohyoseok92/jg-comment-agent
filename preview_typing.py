@@ -4,17 +4,21 @@ from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
+import yaml
 
 from poster import SEL
 from youtube_api import parse_video_id
 
 ROOT = Path(__file__).parent
 SAMPLE = "[광고] 운명원 연애 사주 댓글 입력 테스트입니다. 이 문장은 게시하지 않고 브라우저를 닫습니다."
+PROFILES = {
+    p["name"]: (ROOT / p["user_data_dir"]).resolve()
+    for p in yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))["profiles"]
+}
 
 
 def preview(video_id: str, profile: str = "유튜브1") -> Path:
-    folders = {"유튜브1": "youtube1", "유튜브2": "youtube2", "유튜브3": "youtube3"}
-    user_data_dir = ROOT / "chrome_profiles" / folders[profile]
+    user_data_dir = PROFILES[profile]
     if not user_data_dir.exists():
         raise RuntimeError(f"{profile} 프로필이 없습니다. open_profile.py로 로그인해 주세요.")
     shot_dir = ROOT / "data" / "screenshots"
@@ -63,7 +67,7 @@ def preview(video_id: str, profile: str = "유튜브1") -> Path:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("video", help="YouTube 영상 URL 또는 영상 ID")
-    parser.add_argument("--profile", choices=["유튜브1", "유튜브2", "유튜브3"], default="유튜브1")
+    parser.add_argument("--profile", choices=list(PROFILES), default=next(iter(PROFILES)))
     args = parser.parse_args()
     vid = parse_video_id(args.video)
     if not vid:

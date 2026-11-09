@@ -204,3 +204,12 @@ def list_log(limit: int = 200) -> list:
     with connect() as con:
         rows = con.execute("SELECT * FROM comments ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in rows]
+
+
+def list_unverified() -> list:
+    """세션이 끊겨도 수동 확인이 필요한 게시를 다시 찾을 수 있게 한다."""
+    with connect() as con:
+        rows = con.execute(
+            "SELECT * FROM comments WHERE status='unverified' ORDER BY id DESC"
+        ).fetchall()
+        return [dict(r) for r in rows]

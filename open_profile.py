@@ -15,6 +15,7 @@ CANDIDATES = {
     "Windows": [
         r"C:\Program Files\Google\Chrome\Application\chrome.exe",
         r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+        str(Path.home() / "AppData" / "Local" / "Google" / "Chrome" / "Application" / "chrome.exe"),
     ],
     "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
     "Linux": ["google-chrome", "google-chrome-stable"],

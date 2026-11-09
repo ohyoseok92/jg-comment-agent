@@ -33,6 +33,10 @@ class PostError(Exception):
     pass
 
 
+def normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()
+
+
 def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: int):
     job = db.get_job(job_id)
     if not job or job["status"] != "queued":
@@ -54,9 +58,11 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
             db.update_status(job_id, "failed", f"크롬 프로필을 열지 못했습니다(같은 프로필 창이 열려 있으면 닫아 주세요): {e}")
             return
 
-        page = ctx.pages[0] if ctx.pages else ctx.new_page()
+        page = None
         submitted = False
+        verified = False
         try:
+            page = ctx.pages[0] if ctx.pages else ctx.new_page()
             page.goto(f"https://www.youtube.com/watch?v={vid}&hl=ko", wait_until="domcontentloaded", timeout=45000)
             page.wait_for_selector(SEL["watch"], timeout=30000)
             page.wait_for_timeout(2500)
@@ -88,6 +94,8 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
                 page.keyboard.type(ch)
                 page.wait_for_timeout(random.randint(min_delay, max_delay))
             page.wait_for_timeout(800)
+            if normalize(editor.inner_text()) != normalize(text):
+                raise PostError("입력창의 문구가 검증된 초안과 달라 게시하지 않았습니다.")
 
             submit = page.locator(SEL["submit"]).first
             submit.wait_for(state="visible", timeout=5000)
@@ -104,10 +112,9 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
             mine.wait_for(state="visible", timeout=20000)
             mine.scroll_into_view_if_needed()
             rendered = mine.locator(SEL["content"]).first.inner_text()
-            normalize = lambda value: re.sub(r"\s+", " ", value).strip()
             if normalize(rendered) != normalize(text):
                 raise PostError("댓글 목록의 문구가 게시한 초안과 일치하지 않습니다.")
-            mine.evaluate("el => { el.style.outline = '3px solid #22c55e'; el.style.borderRadius = '8px'; }")
+            verified = True
 
             link = mine.locator("a[href*='lc=']")
             href = link.first.get_attribute("href") if link.count() else None
@@ -117,19 +124,26 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
                 job_id, "posted", "게시 완료 · 내 댓글 확인됨",
                 comment_url=href or f"https://www.youtube.com/watch?v={vid}",
             )
-            page.wait_for_timeout(hold * 1000)
+            try:
+                mine.evaluate("el => { el.style.outline = '3px solid #22c55e'; el.style.borderRadius = '8px'; }")
+                page.wait_for_timeout(hold * 1000)
+            except Exception:
+                pass  # 이미 확인한 게시 결과는 창 닫힘 등으로 되돌리지 않는다.
 
         except Exception as e:
             SHOT_DIR.mkdir(parents=True, exist_ok=True)
             shot = SHOT_DIR / f"job{job_id}_{datetime.now():%Y%m%d_%H%M%S}.png"
             try:
-                page.screenshot(path=str(shot))
-                shot_path = str(shot)
+                if page:
+                    page.screenshot(path=str(shot))
+                    shot_path = str(shot)
+                else:
+                    shot_path = None
             except Exception:
                 shot_path = None
             reason = str(e).splitlines()[0][:300] if str(e) else type(e).__name__
-            # 게시 버튼을 이미 눌렀다면 실제로 달렸을 수 있으므로 재시도(중복 게시)를 막는다
-            status = "unverified" if submitted else "failed"
+            # 게시를 확인했으면 후속 화면 오류가 나도 결과를 되돌리지 않는다.
+            status = "posted" if verified else ("unverified" if submitted else "failed")
             db.update_status(job_id, status, reason, screenshot=shot_path)
         finally:
             ctx.close()
