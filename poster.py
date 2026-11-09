@@ -7,6 +7,7 @@
 """
 import argparse
 import random
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -102,8 +103,9 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
             ).first
             mine.wait_for(state="visible", timeout=20000)
             mine.scroll_into_view_if_needed()
-            rendered = mine.locator(SEL["content"]).first.inner_text().strip()
-            if rendered != text.strip():
+            rendered = mine.locator(SEL["content"]).first.inner_text()
+            normalize = lambda value: re.sub(r"\s+", " ", value).strip()
+            if normalize(rendered) != normalize(text):
                 raise PostError("댓글 목록의 문구가 게시한 초안과 일치하지 않습니다.")
             mine.evaluate("el => { el.style.outline = '3px solid #22c55e'; el.style.borderRadius = '8px'; }")
 
