@@ -17,6 +17,7 @@ ROOT = Path(__file__).parent
 load_dotenv(ROOT / ".env")
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
 YT_KEY = os.getenv("YOUTUBE_API_KEY")
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
 PROFILE_NAMES = [p["name"] for p in CFG["profiles"]]
 db.init()
 
@@ -105,9 +106,14 @@ def status_panel():
 
 st.title("유튜브 댓글 에이전트")
 st.caption("① 영상을 불러오고 → ② 목록에서 하나를 고르면 초안이 만들어지고 → ③ [댓글 달기]를 누르면 크롬이 열려 직접 게시합니다.")
-if not YT_KEY or not os.getenv("ANTHROPIC_API_KEY"):
-    missing = ", ".join(k for k, ready in (("YOUTUBE_API_KEY", YT_KEY), ("ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY"))) if not ready)
-    st.info(f"시작하려면 .env에 {missing}를 입력하세요. 게시 전에 해당 크롬 프로필에 로그인도 필요합니다.")
+if not YT_KEY:
+    st.info("영상 검색을 쓰려면 .env에 YOUTUBE_API_KEY를 입력하세요.")
+if LLM_PROVIDER == "ollama":
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M")
+    ready, detail = drafter.local_model_status(model)
+    st.caption(f"AI: PC의 Ollama ({model}) · {detail}")
+elif LLM_PROVIDER == "anthropic" and not os.getenv("ANTHROPIC_API_KEY"):
+    st.info("Claude를 선택했습니다. .env에 ANTHROPIC_API_KEY를 입력하세요.")
 st.caption("광고임을 밝히는 댓글만 게시합니다. 시연은 본인 채널의 테스트 영상에서 진행하세요.")
 
 c1, c2, c3 = st.columns([1.15, 1.25, 1])

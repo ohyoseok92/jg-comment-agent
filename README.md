@@ -13,7 +13,11 @@ Copy-Item .env.example .env
 notepad .env
 ```
 
-`.env`에 `YOUTUBE_API_KEY`와 `ANTHROPIC_API_KEY`를 넣습니다. Anthropic 모델은 `ANTHROPIC_MODEL`로 바꿀 수 있습니다. YouTube Data API v3를 Google Cloud 프로젝트에서 활성화해야 합니다. 검색 결과는 5분간 캐시합니다.
+비용을 아끼려면 `.env`에는 `YOUTUBE_API_KEY` 한 개만 입력합니다. 기본 AI는 PC에 설치된 Ollama 모델이므로 AI API 키가 필요하지 않습니다. 이 PC에는 `qwen2.5-coder:7b-instruct-q4_K_M` 모델이 이미 있습니다. 다른 PC에서는 `ollama pull qwen2.5-coder:7b-instruct-q4_K_M`로 설치할 수 있습니다. Ollama가 실행 중이지 않으면 별도 PowerShell 창에서 `ollama serve`를 실행합니다. [Ollama 로컬 API](https://docs.ollama.com/api/authentication)는 인증 키가 필요하지 않습니다.
+
+YouTube Data API v3는 Google Cloud 프로젝트에서 활성화하고 API 키를 만듭니다. Google 계정으로 [Google Cloud 콘솔](https://console.cloud.google.com/apis/library/youtube.googleapis.com)에 접속해 서비스를 활성화한 뒤 [사용자 인증 정보](https://console.cloud.google.com/apis/credentials)에서 API 키를 생성합니다. 키의 API 제한을 `YouTube Data API v3`로 설정하고 `.env`의 `YOUTUBE_API_KEY=` 뒤에 붙여 넣습니다. 검색 결과는 5분간 캐시합니다. [공식 인증 안내](https://developers.google.com/youtube/data/guides/authentication)를 참고하세요.
+
+유료 Claude API를 쓰고 싶을 때만 `LLM_PROVIDER=anthropic`으로 바꾸고 `ANTHROPIC_API_KEY`를 입력합니다. 기본 설정에서는 이 키가 필요하지 않습니다.
 
 처음 한 번은 게시에 쓸 별도 Chrome 프로필을 엽니다.
 
@@ -51,10 +55,12 @@ Chrome에서 직접 Google 계정에 로그인하고 YouTube 화면을 확인한
 .\.venv\Scripts\python.exe -m pytest -q
 ```
 
-오프라인 테스트는 DB 중복·상한·불확정 상태, 영상 필터, URL 파싱, AI 초안 규칙을 확인합니다. 실제 YouTube API 호출과 게시 성공은 개인 API 키와 로그인된 Chrome 프로필이 있어야 확인할 수 있습니다. 제출에는 2~3분 시연 영상이 필수입니다. [시연 촬영 가이드](시연_촬영_가이드.md)와 [제작 의도](제작의도.md)를 참고하세요.
+오프라인 테스트는 DB 중복·상한·불확정 상태, 영상 필터, URL 파싱, AI 초안 규칙을 확인합니다. 로컬 Ollama 초안 생성은 API 키 없이 시험할 수 있습니다. 실제 YouTube 검색과 게시 성공은 YouTube API 키와 로그인된 Chrome 프로필이 있어야 확인할 수 있습니다. 제출에는 2~3분 시연 영상이 필수입니다. [시연 촬영 가이드](시연_촬영_가이드.md)와 [제작 의도](제작의도.md)를 참고하세요.
 
 `.env`, `chrome_profiles/`, `data/`, `.venv/`는 Git에서 제외합니다.
 
+설정만 먼저 확인하려면 `.\.venv\Scripts\python.exe check_setup.py`를 실행하세요. 이 명령은 YouTube API를 호출하거나 댓글을 게시하지 않습니다.
+
 ## 사용한 오픈소스와 API
 
-Claude가 만든 초기 코드 초안을 검토·수정했습니다. 사용한 주요 도구는 [Streamlit](https://streamlit.io/), [Playwright](https://playwright.dev/python/), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), [Requests](https://requests.readthedocs.io/), [PyYAML](https://pyyaml.org/), [python-dotenv](https://github.com/theskumar/python-dotenv), [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), [YouTube Data API v3](https://developers.google.com/youtube/v3)입니다.
+Claude가 만든 초기 코드 초안을 검토·수정했습니다. 사용한 주요 도구는 [Streamlit](https://streamlit.io/), [Playwright](https://playwright.dev/python/), [Ollama](https://ollama.com/), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), [Requests](https://requests.readthedocs.io/), [PyYAML](https://pyyaml.org/), [python-dotenv](https://github.com/theskumar/python-dotenv), 선택 사항인 [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), [YouTube Data API v3](https://developers.google.com/youtube/v3)입니다.

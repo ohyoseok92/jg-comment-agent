@@ -4,7 +4,7 @@ import os
 import re
 from difflib import SequenceMatcher
 
-import anthropic
+import requests
 
 import youtube_api as yt
 
@@ -19,6 +19,50 @@ SYSTEM = """너는 운명원 홍보 담당자의 공개 광고 댓글을 돕는 
 시청자인 척하거나 영상 전체를 보았다고 암시하지 않는다. 확인된 자막·제목·설명만 근거로 삼는다.
 과장과 가짜 이용 후기를 쓰지 않는다. 댓글은 읽기 쉬운 자연스러운 한국어로 쓴다.
 출력은 반드시 JSON 하나만."""
+
+OLLAMA_URL = "http://127.0.0.1:11434"
+
+
+def local_model_status(model: str) -> tuple[bool, str]:
+    """실제로 PC에 저장된 모델만 사용한다. 클라우드 모델 자동 호출을 피한다."""
+    try:
+        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=3)
+        response.raise_for_status()
+        names = {item["name"] for item in response.json().get("models", [])}
+    except requests.RequestException:
+        return False, "Ollama가 실행 중이지 않습니다. PowerShell에서 ollama serve를 실행하세요."
+    if model not in names:
+        return False, f"로컬 모델 {model}을 찾지 못했습니다. ollama list로 설치된 이름을 확인하세요."
+    return True, "로컬 AI 준비됨"
+
+
+def _chat(provider: str, model: str, messages: list, max_tokens: int) -> str:
+    if provider == "ollama":
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": SYSTEM}, *messages],
+            "format": "json",
+            "stream": False,
+            "options": {"temperature": 0.4, "num_ctx": 4096, "num_predict": max_tokens},
+        }
+        try:
+            response = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=180)
+            response.raise_for_status()
+            return response.json()["message"]["content"]
+        except (requests.RequestException, KeyError, ValueError) as exc:
+            raise RuntimeError(f"로컬 AI 호출 실패: {exc}") from exc
+    if provider == "anthropic":
+        key = os.getenv("ANTHROPIC_API_KEY")
+        if not key:
+            raise RuntimeError("ANTHROPIC_API_KEY가 .env에 없습니다.")
+        import anthropic
+
+        client = anthropic.Anthropic(api_key=key)
+        response = client.messages.create(
+            model=model, max_tokens=max_tokens, system=SYSTEM, messages=messages
+        )
+        return "".join(block.text for block in response.content if getattr(block, "type", "") == "text")
+    raise RuntimeError(f"지원하지 않는 LLM_PROVIDER: {provider}")
 
 
 def _limits(cfg):
@@ -42,6 +86,8 @@ def validate(text: str, cfg: dict, previous=()) -> list:
         errs.append(f"길이 {n}자 — {c['min_chars']}~{c['max_chars']}자여야 합니다.")
     if c["brand"] not in text:
         errs.append(f"'{c['brand']}'이 들어가야 합니다.")
+    if not re.search(r"연애\s*사주", text):
+        errs.append("운명원이 어떤 서비스인지 알 수 있도록 '연애 사주'를 넣어야 합니다.")
     prefix = (c.get("disclosure") or "").strip()
     if prefix and not text.startswith(prefix):
         errs.append(f"광고 표시 '{prefix}'로 시작해야 합니다.")
@@ -51,17 +97,15 @@ def validate(text: str, cfg: dict, previous=()) -> list:
         errs.append("해시태그는 넣을 수 없습니다.")
     if FAKE_REVIEW_RE.search(text):
         errs.append("운명원을 직접 이용해 본 것 같은 후기 표현은 쓸 수 없습니다.")
+    if re.search(r"운명원\s*님", text):
+        errs.append("운명원은 사람 이름이 아니라 서비스 이름입니다.")
+    if re.search(r"운명원.{0,20}(알려주|설명하|분석하|영상|이론|해결|보장)", text):
+        errs.append("운명원이 영상 제공자이거나 고민을 해결해 준다는 근거 없는 표현을 쓰지 마세요.")
     for p in previous:
         if p and p != text and SequenceMatcher(None, text, p).ratio() > SIMILARITY_LIMIT:
             errs.append("이전에 단 댓글과 너무 비슷합니다.")
             break
     return errs
-
-
-def _mentions_detail(body: str, detail: str) -> bool:
-    """짚은 장면/말의 핵심 단어가 댓글에 하나라도 들어갔는지 (느슨한 검사)."""
-    tokens = re.findall(r"[가-힣A-Za-z0-9]{2,}", detail or "")
-    return any(t[:2] in body for t in tokens)
 
 
 def _parse_json(text: str) -> dict:
@@ -72,14 +116,17 @@ def _parse_json(text: str) -> dict:
 
 
 def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY가 .env에 없습니다.")
+    provider = os.getenv("LLM_PROVIDER", "ollama").lower()
     yt_key = os.getenv("YOUTUBE_API_KEY")
-    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+    model = (os.getenv("OLLAMA_MODEL", "qwen2.5-coder:7b-instruct-q4_K_M") if provider == "ollama"
+             else os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6"))
+    if provider == "ollama":
+        ready, detail = local_model_status(model)
+        if not ready:
+            raise RuntimeError(detail)
 
-    transcript = yt.get_transcript(video["id"])
-    comments = yt.get_top_comments(yt_key, video["id"]) if yt_key else []
+    transcript = yt.get_transcript(video["id"], max_chars=2500 if provider == "ollama" else 6000)
+    comments = yt.get_top_comments(yt_key, video["id"], n=6 if provider == "ollama" else 15) if yt_key else []
     source = "자막" if transcript else "제목·설명"
     lo, hi, prefix = _limits(cfg)
     brand = cfg["comment"]["brand"]
@@ -97,7 +144,6 @@ def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
 [인기 댓글]
 {top}"""
 
-    client = anthropic.Anthropic(api_key=api_key)
     analysis_prompt = context + """
 
 [할 일]
@@ -107,19 +153,26 @@ def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
 확인할 수 없는 장면은 지어내지 말고 detail에 제목의 표현을 그대로 쓴다.
 출력: {"concern": "...", "detail": "..."}"""
     evidence = f"{video['title']} {video.get('description', '')[:800]} {transcript or ''}"
+    concern, detail = "", ""
     for attempt in range(2):
-        response = client.messages.create(
-            model=model, max_tokens=400, system=SYSTEM,
-            messages=[{"role": "user", "content": analysis_prompt + ("\n직전 답변은 자료에 없는 표현이었습니다. detail은 원문에서 정확히 복사하세요." if attempt else "")}],
+        raw_analysis = _chat(
+            provider, model,
+            [{"role": "user", "content": analysis_prompt + ("\n직전 답변은 자료에 없는 표현이었습니다. detail은 원문에서 정확히 복사하세요." if attempt else "")}],
+            400,
         )
-        raw_analysis = "".join(b.text for b in response.content if getattr(b, "type", "") == "text")
         analysis = _parse_json(raw_analysis)
         concern = str(analysis.get("concern", "")).strip()[:35]
         detail = str(analysis.get("detail", "")).strip()
+        if detail in evidence and len(detail) > 20:
+            detail = detail[:20].rsplit(" ", 1)[0].rstrip(".,!? ") or detail[:20]
         if concern and detail and detail in evidence:
             break
     else:
-        raise ValueError("AI가 영상 자료에 없는 장면을 골랐습니다. 다시 초안을 만들어 주세요.")
+        detail = video["title"].split("#", 1)[0].strip()[:20].rstrip(".,!? ")
+        concern = concern or video["title"].strip()[:35]
+        source = "제목"
+        if not detail:
+            raise ValueError("영상에서 댓글에 넣을 표현을 찾지 못했습니다.")
 
     prompt = f"""{context}
 
@@ -133,8 +186,11 @@ def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
 [할 일]
 body: 운명원 담당자가 공개 광고 표시와 함께 쓸 댓글 본문.
    - 길이 {lo}~{hi}자 (공백 포함)
-   - 확인된 장면 또는 표현을 직접 언급할 것
-   - '{brand}'을 자연스럽게 언급하되 제삼자 추천이나 이용 경험을 가장하지 말 것
+   - 확인된 장면 또는 표현 '{detail}'을 그대로 넣을 것
+   - '{brand}'은 이 영상과 무관한 별도 연애 사주 서비스다. '운명원 연애 사주'라고 소개할 것
+   - 운명원이 영상이나 이론을 알려주거나 고민을 해결·보장한다는 식으로 쓰지 말 것. 사람처럼 '님'을 붙이지 말 것
+   - 연락을 요청하지 말고, 연애 사주를 알아볼 선택지로만 소개할 것
+   - 제삼자 추천이나 이용 경험을 가장하지 말 것
    - 금지: 링크, 해시태그, 가짜 후기, 과장 광고 문구, 인기 댓글 베끼기
    - 광고 표시 문구는 시스템이 앞에 붙이므로 body에는 넣지 말 것
 
@@ -143,15 +199,14 @@ body: 운명원 담당자가 공개 광고 표시와 함께 쓸 댓글 본문.
     messages = [{"role": "user", "content": prompt}]
     last = None
     for _ in range(max_tries):
-        resp = client.messages.create(model=model, max_tokens=800, system=SYSTEM, messages=messages)
-        raw = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
+        raw = _chat(provider, model, messages, 500)
         try:
             data = _parse_json(raw)
             body = str(data.get("body", "")).strip()
             comment = compose(prefix, body)
             errs = validate(comment, cfg, previous)
-            if not _mentions_detail(body, detail):
-                errs.append("detail에 적은 장면/말이 댓글 본문에 드러나지 않습니다.")
+            if detail not in body:
+                errs.append("확인된 장면/말을 댓글 본문에 그대로 넣어야 합니다.")
         except (ValueError, json.JSONDecodeError) as e:
             data, comment, errs = {}, "", [str(e)]
         last = {

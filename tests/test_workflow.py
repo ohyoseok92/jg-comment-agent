@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 
 import pytest
 
@@ -57,26 +56,22 @@ def test_draft_checks_source_and_disclosure(monkeypatch):
         '{"body":"이별 뒤 연락을 기다리는 마음이 참 어렵죠. 운명원에서 연애 사주를 살펴보는 방법도 있습니다."}',
     ])
 
-    class FakeClient:
-        def __init__(self, **kwargs):
-            pass
-
-        @property
-        def messages(self):
-            return self
-
-        def create(self, **kwargs):
-            return SimpleNamespace(content=[SimpleNamespace(type="text", text=next(replies))])
-
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    monkeypatch.setattr(drafter.anthropic, "Anthropic", FakeClient)
-    monkeypatch.setattr(yt, "get_transcript", lambda *_: "")
-    monkeypatch.setattr(yt, "get_top_comments", lambda *_: [])
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(drafter, "local_model_status", lambda *_: (True, "ready"))
+    monkeypatch.setattr(drafter, "_chat", lambda *_: next(replies))
+    monkeypatch.setattr(yt, "get_transcript", lambda *_, **__: "")
+    monkeypatch.setattr(yt, "get_top_comments", lambda *_, **__: [])
     draft = drafter.make_draft(video, cfg)
     assert draft["source"] == "제목·설명"
     assert draft["detail"] == "이별 뒤 연락"
     assert draft["comment"].startswith("[광고] ")
     assert drafter.validate(draft["comment"], cfg) == []
+
+
+def test_rejects_brand_as_video_author():
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    text = "[광고] 헤어진 뒤 연락을 기다리는 고민이네요. 운명원이 알려주는 연애 사주 이론을 참고해 보세요."
+    assert any("근거 없는" in error for error in drafter.validate(text, cfg))
 
 
 @pytest.mark.parametrize("url", [
