@@ -1,0 +1,33 @@
+# 내 컴퓨터의 크롬 프로필 (각각 다른 구글 계정으로 로그인)
+profiles:
+  - name: 유튜브1
+    user_data_dir: ./chrome_profiles/youtube1
+  - name: 유튜브2
+    user_data_dir: ./chrome_profiles/youtube2
+  - name: 유튜브3
+    user_data_dir: ./chrome_profiles/youtube3
+
+comment:
+  min_chars: 40
+  max_chars: 120          # 광고 표시 문구까지 포함한 전체 길이
+  brand: 운명원
+  disclosure: "[광고]"    # 경제적 이해관계 표시 (표시광고법 추천·보증 심사지침)
+
+limits:
+  daily_max_comments: 10  # 하루 게시 상한 (코드에서 강제)
+
+search:
+  keyword: 연애
+  max_results: 20
+
+# 가점: '연애' 키워드로 뜨기 직전 영상 찾기 (초안까지만)
+rising:
+  lookback_hours: 48
+  min_views: 1000
+  max_views: 5000
+  min_views_per_hour: 150
+
+typing:
+  min_delay_ms: 60
+  max_delay_ms: 170
+  hold_seconds: 6         # 게시 확인 후 창을 열어두는 시간 (시연용)
