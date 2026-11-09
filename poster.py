@@ -65,7 +65,8 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
                 **video_options,
             )
         except Exception as e:
-            db.update_status(job_id, "failed", f"크롬 프로필을 열지 못했습니다(같은 프로필 창이 열려 있으면 닫아 주세요): {e}")
+            reason = str(e).splitlines()[0][:300]
+            db.update_status(job_id, "failed", f"크롬 프로필을 열지 못했습니다(같은 프로필 창이 열려 있으면 닫아 주세요): {reason}")
             return
 
         page = None

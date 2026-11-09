@@ -77,6 +77,16 @@ def test_rising_post_guard_uses_video_metadata_even_after_direct_link():
     assert not yt.is_rising({**video, "view_count": 999}, 1000, 5000, 150, 48, now)
 
 
+def test_rising_post_guard_refreshes_stale_view_count(monkeypatch):
+    now = datetime.now(timezone.utc)
+    latest = {"view_count": 3000, "published_at": (now - timedelta(hours=10)).isoformat()}
+    monkeypatch.setattr(yt, "get_videos", lambda key, ids: [latest])
+    assert yt.is_rising_now("test-key", "abcdefghijk", 1000, 5000, 150, 48)
+    monkeypatch.setattr(yt, "get_videos", lambda key, ids: [])
+    with pytest.raises(RuntimeError, match="게시를 중단"):
+        yt.is_rising_now("test-key", "abcdefghijk", 1000, 5000, 150, 48)
+
+
 def test_draft_checks_source_and_disclosure(monkeypatch):
     cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
     video = {"id": "abcdefghijk", "title": "이별 뒤 연락을 기다려야 할까", "channel": "테스트", "description": "이별 뒤 연락", "thumbnail": ""}
@@ -131,6 +141,31 @@ def test_rejects_direct_contact_request():
     cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
     text = "[광고] 헤어진 뒤 연락을 기다리는 마음이 복잡하죠. 운명원 연애 사주가 궁금하면 언제든지 문의해주세요."
     assert any("문의나 연락" in error for error in drafter.validate(text, cfg))
+
+
+@pytest.mark.parametrize("phrase", ["문의 해 주세요", "연락 해주세요", "문의하세요", "연락 바랍니다"])
+def test_rejects_spaced_contact_requests(phrase):
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    text = f"[광고] 이별 뒤 마음을 돌아보는 이야기입니다. 운명원 연애 사주가 궁금하면 {phrase}."
+    assert any("문의나 연락" in error for error in drafter.validate(text, cfg))
+
+
+def test_draft_does_not_choose_contact_request_as_required_source(monkeypatch):
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    video = {"id": "abcdefghijk", "title": "연락해주세요? 이별 뒤 마음", "channel": "테스트", "description": "", "thumbnail": ""}
+    replies = iter([
+        '{"concern":"이별 뒤 마음","detail":"연락해주세요"}',
+        '{"concern":"이별 뒤 마음","detail":"연락해주세요"}',
+        '{"body":"이별 뒤 마음을 돌아보는 시간이 필요할 수 있죠. 운명원 연애 사주도 선택지 중 하나입니다."}',
+    ])
+    monkeypatch.setenv("LLM_PROVIDER", "ollama")
+    monkeypatch.setattr(drafter, "local_model_status", lambda *_: (True, "ready"))
+    monkeypatch.setattr(drafter, "_chat", lambda *_: next(replies))
+    monkeypatch.setattr(yt, "get_transcript", lambda *_, **__: "")
+    monkeypatch.setattr(yt, "get_top_comments", lambda *_, **__: [])
+    draft = drafter.make_draft(video, cfg)
+    assert draft["detail"] == "이별 뒤 마음"
+    assert draft["errors"] == []
 
 
 @pytest.mark.parametrize("url", [

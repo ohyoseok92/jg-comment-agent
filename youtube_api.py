@@ -133,6 +133,15 @@ def is_rising(video: dict, min_views: int, max_views: int, min_vph: int,
             and views_per_hour(video, now) >= min_vph)
 
 
+def is_rising_now(key: str, video_id: str, min_views: int, max_views: int,
+                  min_vph: int, lookback_hours: int = 48) -> bool:
+    """게시 직전 videos.list로 조회수를 다시 받아 뜨기 직전 여부를 판정한다."""
+    videos = get_videos(key, [video_id])
+    if not videos:
+        raise RuntimeError("영상 정보를 다시 확인하지 못했습니다. 게시를 중단합니다.")
+    return is_rising(videos[0], min_views, max_views, min_vph, lookback_hours)
+
+
 def get_top_comments(key: str, video_id: str, n: int = 15) -> list:
     _require(key)
     try:

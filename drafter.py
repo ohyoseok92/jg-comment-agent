@@ -13,6 +13,7 @@ URL_RE = re.compile(r"https?://|www\.|\b[\w-]+\.(com|kr|net|co|me|io|ly|link)\b"
 FAKE_REVIEW_RE = re.compile(
     r"(운명원|사주|상담).{0,20}(봤는데|봤더니|받아봤|받았는데|다녀왔|보고\s?왔|가봤|해봤|맞더라|맞았|소름)"
 )
+CONTACT_REQUEST_RE = re.compile(r"(?:문의|연락)\s*(?:해\s*)?(?:주세요|주시\w*|하세요|바랍니다)")
 SIMILARITY_LIMIT = 0.6
 
 SYSTEM = """너는 운명원 홍보 담당자의 공개 광고 댓글을 돕는 편집자다.
@@ -97,7 +98,7 @@ def validate(text: str, cfg: dict, previous=()) -> list:
         errs.append("해시태그는 넣을 수 없습니다.")
     if FAKE_REVIEW_RE.search(text):
         errs.append("운명원을 직접 이용해 본 것 같은 후기 표현은 쓸 수 없습니다.")
-    if re.search(r"(문의|연락)(해\s*|\s*)주세요", text):
+    if CONTACT_REQUEST_RE.search(text):
         errs.append("시청자에게 문의나 연락을 요청하지 마세요.")
     if re.search(r"운명원\s*님", text):
         errs.append("운명원은 사람 이름이 아니라 서비스 이름입니다.")
@@ -170,10 +171,14 @@ def make_draft(video: dict, cfg: dict, previous=(), max_tries: int = 4) -> dict:
         detail = str(analysis.get("detail", "")).strip()
         if detail in evidence and len(detail) > 20:
             detail = detail[:20].rsplit(" ", 1)[0].rstrip(".,!? ") or detail[:20]
-        if concern and detail and detail in evidence and "#" not in detail and not URL_RE.search(detail):
+        if (concern and detail and detail in evidence and "#" not in detail
+                and not URL_RE.search(detail) and not CONTACT_REQUEST_RE.search(detail)):
             break
     else:
-        detail = video["title"].split("#", 1)[0].strip()[:20].rstrip(".,!? ")
+        title = video["title"].split("#", 1)[0]
+        parts = CONTACT_REQUEST_RE.split(title)
+        detail = next((part.strip(" .,!?\t\n")[:20].rstrip(".,!? ") for part in parts
+                       if part.strip(" .,!?\t\n") and not CONTACT_REQUEST_RE.search(part)), "")
         concern = concern or video["title"].strip()[:35]
         source = "제목"
         if not detail:
