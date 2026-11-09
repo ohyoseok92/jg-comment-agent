@@ -242,7 +242,8 @@ with c3:
     reason = None
     if not v:
         reason = "먼저 ②에서 영상을 고르세요."
-    elif v.get("rising"):
+    elif yt.is_rising(v, CFG["rising"]["min_views"], CFG["rising"]["max_views"],
+                      CFG["rising"]["min_views_per_hour"], CFG["rising"]["lookback_hours"]):
         reason = "뜨기 직전 영상은 초안까지만 만듭니다."
     elif ss.errs:
         reason = "초안이 규칙을 통과해야 게시할 수 있습니다."
@@ -251,6 +252,9 @@ with c3:
 
     if st.button("댓글 달기", type="primary", width="stretch", disabled=bool(reason)):
         try:
+            r = CFG["rising"]
+            if yt.is_rising(v, r["min_views"], r["max_views"], r["min_views_per_hour"], r["lookback_hours"]):
+                raise db.RuleViolation("뜨기 직전 영상은 초안까지만 만듭니다.")
             current_errors = drafter.validate(ss.text, CFG, db.previous_texts())
             if current_errors:
                 raise db.RuleViolation("게시 직전 검증 실패: " + "; ".join(current_errors))

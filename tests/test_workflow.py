@@ -68,6 +68,15 @@ def test_rising_filter_uses_age_and_views(monkeypatch):
     assert [v["id"] for v in result] == ["abcdefghijk"]
 
 
+def test_rising_post_guard_uses_video_metadata_even_after_direct_link():
+    now = datetime.now(timezone.utc)
+    video = {"view_count": 3000, "published_at": (now - timedelta(hours=10)).isoformat()}
+    assert yt.is_rising(video, 1000, 5000, 150, 48, now)
+    assert not yt.is_rising({**video, "published_at": (now - timedelta(hours=49)).isoformat()},
+                            1000, 5000, 150, 48, now)
+    assert not yt.is_rising({**video, "view_count": 999}, 1000, 5000, 150, 48, now)
+
+
 def test_draft_checks_source_and_disclosure(monkeypatch):
     cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
     video = {"id": "abcdefghijk", "title": "이별 뒤 연락을 기다려야 할까", "channel": "테스트", "description": "이별 뒤 연락", "thumbnail": ""}

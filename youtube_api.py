@@ -108,15 +108,29 @@ def find_rising(key, keyword, min_views, max_views, min_vph, lookback_hours=48) 
     ids = [it["id"]["videoId"] for it in data.get("items", []) if it["id"].get("videoId")]
     result = []
     for v in get_videos(key, ids):
-        pub = datetime.fromisoformat(v["published_at"].replace("Z", "+00:00"))
-        hours = max((now - pub).total_seconds() / 3600, 0.25)
-        vph = v["view_count"] / hours
-        if min_views <= v["view_count"] <= max_views and vph >= min_vph:
+        if is_rising(v, min_views, max_views, min_vph, lookback_hours, now):
             v["rising"] = True
-            v["views_per_hour"] = vph
+            v["views_per_hour"] = views_per_hour(v, now)
             result.append(v)
     result.sort(key=lambda v: v["views_per_hour"], reverse=True)
     return result
+
+
+def views_per_hour(video: dict, now=None) -> float:
+    now = now or datetime.now(timezone.utc)
+    pub = datetime.fromisoformat(video["published_at"].replace("Z", "+00:00"))
+    return video["view_count"] / max((now - pub).total_seconds() / 3600, 0.25)
+
+
+def is_rising(video: dict, min_views: int, max_views: int, min_vph: int,
+              lookback_hours: int = 48, now=None) -> bool:
+    """검색 경로와 무관하게 뜨기 직전 영상의 게시를 막는 공통 조건."""
+    now = now or datetime.now(timezone.utc)
+    pub = datetime.fromisoformat(video["published_at"].replace("Z", "+00:00"))
+    age_hours = (now - pub).total_seconds() / 3600
+    return (0 <= age_hours <= lookback_hours
+            and min_views <= video["view_count"] <= max_views
+            and views_per_hour(video, now) >= min_vph)
 
 
 def get_top_comments(key: str, video_id: str, n: int = 15) -> list:

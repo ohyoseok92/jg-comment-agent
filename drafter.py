@@ -43,7 +43,7 @@ def _chat(provider: str, model: str, messages: list, max_tokens: int) -> str:
             "messages": [{"role": "system", "content": SYSTEM}, *messages],
             "format": "json",
             "stream": False,
-            "options": {"temperature": 0.4, "num_ctx": 4096, "num_predict": max_tokens},
+            "options": {"temperature": 0.4, "num_ctx": 8192, "num_predict": max_tokens},
         }
         try:
             response = requests.post(f"{OLLAMA_URL}/api/chat", json=payload, timeout=180)
@@ -221,7 +221,9 @@ body: 운명원 담당자가 공개 광고 표시와 함께 쓸 댓글 본문.
         }
         if not errs:
             return last
-        messages += [
+        # 매 재시도에 전체 응답을 누적하면 긴 자막과 함께 문맥 창을 넘기 쉽다.
+        messages = [
+            {"role": "user", "content": prompt},
             {"role": "assistant", "content": raw},
             {"role": "user", "content": "다음 문제를 고쳐서 같은 JSON 형식으로 다시 써줘:\n- " + "\n- ".join(errs)},
         ]
