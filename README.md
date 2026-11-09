@@ -61,6 +61,8 @@ Chrome에서 직접 Google 계정에 로그인하고 YouTube 화면을 확인한
 
 설정만 먼저 확인하려면 `.\.venv\Scripts\python.exe check_setup.py`를 실행하세요. 이 명령은 YouTube API를 호출하거나 댓글을 게시하지 않습니다.
 
+게시 없이 Chrome 입력 단계만 확인하려면 `.\.venv\Scripts\python.exe preview_typing.py <유튜브 영상 URL>`을 실행하세요. 미리 정해진 테스트 문구를 입력하고 화면을 캡처한 뒤 창을 닫습니다. 게시 버튼은 누르지 않습니다.
+
 ## 사용한 오픈소스와 API
 
 Claude가 만든 초기 코드 초안을 검토·수정했습니다. 사용한 주요 도구는 [Streamlit](https://streamlit.io/), [Playwright](https://playwright.dev/python/), [Ollama](https://ollama.com/), [youtube-transcript-api](https://github.com/jdepoix/youtube-transcript-api), [Requests](https://requests.readthedocs.io/), [PyYAML](https://pyyaml.org/), [python-dotenv](https://github.com/theskumar/python-dotenv), 선택 사항인 [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python), [YouTube Data API v3](https://developers.google.com/youtube/v3)입니다.
