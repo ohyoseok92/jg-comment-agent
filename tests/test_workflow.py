@@ -112,6 +112,12 @@ def test_rejects_brand_as_video_author():
     assert any("근거 없는" in error for error in drafter.validate(text, cfg))
 
 
+def test_matchmaking_word_is_not_mistaken_for_fake_review():
+    cfg = {"comment": {"min_chars": 40, "max_chars": 120, "brand": "운명원", "disclosure": "[광고]"}}
+    text = "[광고] 이별 뒤 연락을 기다리는 마음이 어렵죠. 운명원 연애 사주로 두 사람 궁합을 맞춰 보는 방법도 있어요."
+    assert drafter.validate(text, cfg) == []
+
+
 @pytest.mark.parametrize("url", [
     "https://www.youtube.com/watch?v=abcdefghijk",
     "https://youtu.be/abcdefghijk",

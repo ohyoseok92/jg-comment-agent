@@ -144,7 +144,9 @@ def run(job_id: int, user_data_dir: str, min_delay: int, max_delay: int, hold: i
             reason = str(e).splitlines()[0][:300] if str(e) else type(e).__name__
             # 게시를 확인했으면 후속 화면 오류가 나도 결과를 되돌리지 않는다.
             status = "posted" if verified else ("unverified" if submitted else "failed")
-            db.update_status(job_id, status, reason, screenshot=shot_path)
+            detail = f"게시 완료 · 내 댓글 확인됨 (후속 처리 오류: {reason})" if verified else reason
+            url = f"https://www.youtube.com/watch?v={vid}" if verified else None
+            db.update_status(job_id, status, detail, screenshot=shot_path, comment_url=url)
         finally:
             ctx.close()
 

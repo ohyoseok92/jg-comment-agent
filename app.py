@@ -76,6 +76,8 @@ def status_panel():
     proc = ss.processes.get(jid)
     if proc and proc.poll() is not None:
         ss.processes.pop(jid, None)
+        # 프로세스 종료 직전에 poster가 최종 상태를 기록했을 수 있다.
+        job = db.get_job(jid)
         if job["status"] in ("queued", "opening", "typing", "submitting"):
             state = "unverified" if job["status"] == "submitting" else "failed"
             db.update_status(jid, state, f"게시 프로세스가 종료됐습니다(종료 코드 {proc.returncode}). data/logs/job{jid}.log를 확인하세요.")

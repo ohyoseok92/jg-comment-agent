@@ -11,7 +11,7 @@ import youtube_api as yt
 URL_RE = re.compile(r"https?://|www\.|\b[\w-]+\.(com|kr|net|co|me|io|ly|link)\b", re.I)
 # 운명원을 직접 이용해 본 것처럼 지어낸 후기 표현
 FAKE_REVIEW_RE = re.compile(
-    r"(운명원|사주|상담).{0,20}(봤는데|봤더니|받아봤|받았는데|다녀왔|보고\s?왔|가봤|해봤|맞더라|맞았|맞춰|소름)"
+    r"(운명원|사주|상담).{0,20}(봤는데|봤더니|받아봤|받았는데|다녀왔|보고\s?왔|가봤|해봤|맞더라|맞았|소름)"
 )
 SIMILARITY_LIMIT = 0.6
 
